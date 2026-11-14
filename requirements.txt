@@ -1,0 +1,16 @@
+annotated-types==0.8.0
+cpsat-logutils==1.0.0
+et_xmlfile==2.0.0
+gurobipy==14.0.0
+numpy==2.5.4
+openpyxl==3.1.5
+orloge==1.0.0
+pandas==3.1.1
+PuLP==2.9.0
+pydantic==2.14.3
+pydantic_core==2.50.4
+PySCIPOpt==6.3.0
+python-dateutil==4.0.0
+typing-inspection==0.4.5
+typing_extensions==4.16.0
+tzdata==2026.6
