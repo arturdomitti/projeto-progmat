@@ -1,19 +1,19 @@
 """
 solvers_comparativo.py
 Comparação Gurobi (comercial) x SCIP (livre) para o Bin Packing de gôndolas
-com incompatibilidade sanitária (Alimento x Limpeza) e 3º tipo compatível
-com ambos (Higiene Pessoal).
+divididas em prateleiras discretas, com incompatibilidade sanitária na gôndola
+(Alimento x Limpeza) e 3º tipo compatível com ambos (Higiene Pessoal).
 
 Formulação (idêntica nos dois solvers):
     min   sum_j y_j
-    s.a.  sum_j x_ij = 1                         para todo i      (cobertura)
-          sum_i w_i x_ij <= C y_j                para todo j      (capacidade)
-          x_ij <= t_j        (i Alimento)        para todo i, j   (sanitária)
-          x_ij <= 1 - t_j    (i Limpeza)         para todo i, j   (sanitária)
-          y_j >= y_{j+1}                         para todo j      (quebra de simetria)
+    s.a.  sum_{j,p} x_{i,j,p} = 1                 para todo i        (cobertura)
+          sum_i w_i x_{i,j,p} <= C_prat * y_j     para todo j, p     (capacidade da prateleira)
+          sum_p x_{i,j,p} <= t_j      (i Alimento) para todo i, j    (sanitária na gôndola)
+          sum_p x_{i,j,p} <= 1 - t_j  (i Limpeza)  para todo i, j    (sanitária na gôndola)
+          y_j >= y_{j+1}                          para todo j        (quebra de simetria)
           x, y, t binárias
     (Itens de Higiene Pessoal não têm restrição com t_j, podendo dividir
-     gôndola tanto com Alimento quanto com Limpeza.)
+     gôndola/prateleira tanto com Alimento quanto com Limpeza.)
 """
 
 import math
@@ -32,7 +32,9 @@ from data import df_filtrado
 # ----------------------------------------------------------------
 # 0. CONFIGURAÇÃO
 # ----------------------------------------------------------------
-CAPACIDADE_GONDOLA = 400      # 4 prateleiras x 100 cm
+NUM_PRATELEIRAS = 4           # prateleiras por gôndola
+CAPACIDADE_PRATELEIRA = 120   # cm por prateleira
+CAPACIDADE_GONDOLA = NUM_PRATELEIRAS * CAPACIDADE_PRATELEIRA  # 480 cm por gôndola
 TEMPO_LIMITE = 60             # segundos, igual para os dois solvers
 SEMENTE = 42                  # reprodutibilidade dos subconjuntos
 CAT_ALIMENTO = "Alimento"
@@ -41,10 +43,10 @@ CAT_HIGIENE = "Higiene Pessoal"
 CATEGORIAS_VALIDAS = (CAT_ALIMENTO, CAT_LIMPEZA, CAT_HIGIENE)
 
 # (número de itens, NUM_FRENTES). Mais frentes = itens mais largos = problema mais difícil.
-INSTANCIAS = [(20, 3), (40, 3), (65, 3), (65, 5), (65, 8)]
+INSTANCIAS = [(20, 3), (40, 3), (65, 3), (65, 4), (65, 5), (65, 6)]
 DETALHAR = (65, 3)            # instância cuja alocação é impressa por extenso
 
-LIMITE_LICENCA_GUROBI = 2000  # variáveis e restrições (licença restrita do pip)
+LIMITE_LICENCA_GUROBI = 2000  # variáveis e restrições (licença restrita do pip; aumente se usar licença acadêmica)
 PASTA_INSTANCIAS = "instancias"
 ARQUIVO_CSV = "resultados_solvers.csv"
 
@@ -78,13 +80,17 @@ def montar_instancia(base, n, frentes, semente=SEMENTE):
         rng = random.Random(semente)
         sel = rng.sample(alim, k_a) + rng.sample(limp, k_l) + rng.sample(hig, k_h)
 
-    itens = [{**it, "largura": it["largura_un"] * frentes} for it in sel]
+    itens = []
+    for it in sel:
+        max_frentes_prat = max(1, int(CAPACIDADE_PRATELEIRA // it["largura_un"]))
+        f_efetivo = min(frentes, max_frentes_prat)
+        itens.append({**it, "largura": it["largura_un"] * f_efetivo})
 
     for it in itens:
         if it["categoria"] not in CATEGORIAS_VALIDAS:
             raise ValueError(f"Categoria inesperada: {it}")
-        if it["largura"] > CAPACIDADE_GONDOLA:
-            raise ValueError(f"Item maior que a gôndola: {it}")
+        if it["largura"] > CAPACIDADE_PRATELEIRA:
+            raise ValueError(f"Item maior que a prateleira ({CAPACIDADE_PRATELEIRA} cm): {it}")
     return itens
 
 
@@ -96,10 +102,10 @@ def salvar_instancia(itens, nome):
 
 
 # ----------------------------------------------------------------
-# 2. LIMITES (LB combinatório e UB via First-Fit Decreasing)
+# 2. LIMITES (LB combinatório e UB via First-Fit Decreasing por prateleira)
 # ----------------------------------------------------------------
-def ffd_folgas(itens, idxs, folgas_iniciais=None):
-    """Aplica First-Fit Decreasing nos itens idxs aproveitando folgas existentes."""
+def ffd_prateleiras(itens, idxs, folgas_iniciais=None):
+    """Aplica First-Fit Decreasing nos itens idxs em prateleiras de CAPACIDADE_PRATELEIRA."""
     folgas = list(folgas_iniciais) if folgas_iniciais is not None else []
     for i in sorted(idxs, key=lambda k: -itens[k]["largura"]):
         w = itens[i]["largura"]
@@ -108,8 +114,16 @@ def ffd_folgas(itens, idxs, folgas_iniciais=None):
                 folgas[b] -= w
                 break
         else:
-            folgas.append(CAPACIDADE_GONDOLA - w)
+            folgas.append(CAPACIDADE_PRATELEIRA - w)
     return folgas
+
+
+def completar_gondolas(folgas_prateleiras):
+    """Completa a última gôndola com prateleiras vazias até múltiplo de NUM_PRATELEIRAS."""
+    n_prat = len(folgas_prateleiras)
+    n_gond = math.ceil(n_prat / NUM_PRATELEIRAS)
+    faltam = n_gond * NUM_PRATELEIRAS - n_prat
+    return list(folgas_prateleiras) + [CAPACIDADE_PRATELEIRA] * faltam
 
 
 def limites(itens):
@@ -123,19 +137,19 @@ def limites(itens):
     lb_tot = math.ceil(soma_total / CAPACIDADE_GONDOLA - 1e-9) if itens else 0
     lb = max(lb_a + lb_l, lb_tot)
 
-    # FFD: empacota A e L separadamente, depois encaixa H nas folgas de ambos
-    folgas_a = ffd_folgas(itens, A)
-    folgas_l = ffd_folgas(itens, L)
-    folgas_finais = ffd_folgas(itens, H, folgas_a + folgas_l)
-    ub = len(folgas_finais)
+    # FFD em prateleiras: empacota A e L em gôndolas separadas, depois encaixa H nas prateleiras disponíveis
+    prat_a = completar_gondolas(ffd_prateleiras(itens, A))
+    prat_l = completar_gondolas(ffd_prateleiras(itens, L))
+    prat_finais = completar_gondolas(ffd_prateleiras(itens, H, prat_a + prat_l))
+    ub = len(prat_finais) // NUM_PRATELEIRAS
     return lb, ub
 
 
 def tamanho_modelo(itens, M):
     n = len(itens)
     A, L, _ = indices_por_categoria(itens)
-    n_vars = n * M + 2 * M
-    n_cons = n + M + (len(A) + len(L)) * M + (M - 1)
+    n_vars = n * M * NUM_PRATELEIRAS + 2 * M
+    n_cons = n + M * NUM_PRATELEIRAS + (len(A) + len(L)) * M + (M - 1)
     return n_vars, n_cons
 
 
@@ -157,32 +171,38 @@ def indices_por_categoria(itens):
 
 def resolver_gurobi(itens, M, env):
     n = len(itens)
-    I, J = range(n), range(M)
+    I, J, P = range(n), range(M), range(NUM_PRATELEIRAS)
     A, L, _ = indices_por_categoria(itens)
 
-    m = gp.Model("BPP_Gondolas_Gurobi", env=env)
+    m = gp.Model("BPP_Gondolas_Prateleiras_Gurobi", env=env)
     m.setParam("TimeLimit", TEMPO_LIMITE)
     m.setParam("Threads", 1)
     m.setParam("MIPGap", 0.0)
 
     y = m.addVars(J, vtype=GRB.BINARY, name="y")
-    t = m.addVars(J, vtype=GRB.BINARY, name="t")        # 1 = gôndola de alimentos
-    x = m.addVars(I, J, vtype=GRB.BINARY, name="x")
+    t = m.addVars(J, vtype=GRB.BINARY, name="t")        # 1 = gôndola permite alimentos
+    x = m.addVars(I, J, P, vtype=GRB.BINARY, name="x")
 
     m.setObjective(gp.quicksum(y[j] for j in J), GRB.MINIMIZE)
 
-    m.addConstrs((gp.quicksum(x[i, j] for j in J) == 1 for i in I), name="cobertura")
+    m.addConstrs((gp.quicksum(x[i, j, p] for j in J for p in P) == 1 for i in I), name="cobertura")
     m.addConstrs(
-        (gp.quicksum(itens[i]["largura"] * x[i, j] for i in I) <= CAPACIDADE_GONDOLA * y[j]
-         for j in J), name="capacidade")
-    m.addConstrs((x[i, j] <= t[j] for i in A for j in J), name="sanitaria_alim")
-    m.addConstrs((x[i, j] <= 1 - t[j] for i in L for j in J), name="sanitaria_limp")
+        (gp.quicksum(itens[i]["largura"] * x[i, j, p] for i in I) <= CAPACIDADE_PRATELEIRA * y[j]
+         for j in J for p in P), name="capacidade_prat")
+    m.addConstrs(
+        (gp.quicksum(x[i, j, p] for p in P) <= t[j] for i in A for j in J),
+        name="sanitaria_alim")
+    m.addConstrs(
+        (gp.quicksum(x[i, j, p] for p in P) <= 1 - t[j] for i in L for j in J),
+        name="sanitaria_limp")
     m.addConstrs((y[j] >= y[j + 1] for j in range(M - 1)), name="simetria")
 
     inicio = time.perf_counter()
     try:
         m.optimize()
     except gp.GurobiError as e:
+        if "size-limited" in str(e).lower() or "too large" in str(e).lower():
+            return resultado("Excede licença Gurobi")
         return resultado(f"Erro Gurobi: {e}")
     tempo = time.perf_counter() - inicio
 
@@ -199,7 +219,7 @@ def resolver_gurobi(itens, M, env):
     obj = bound = alocacao = None
     if tem_sol:
         obj = m.ObjVal
-        alocacao = {i: [j for j in J if x[i, j].X > 0.5] for i in I}
+        alocacao = {i: [(j, p) for j in J for p in P if x[i, j, p].X > 0.5] for i in I}
     if m.Status in (GRB.OPTIMAL, GRB.TIME_LIMIT):
         bound = m.ObjBound
 
@@ -208,30 +228,32 @@ def resolver_gurobi(itens, M, env):
 
 def resolver_scip(itens, M):
     n = len(itens)
-    I, J = range(n), range(M)
+    I, J, P = range(n), range(M), range(NUM_PRATELEIRAS)
     A, L, _ = indices_por_categoria(itens)
 
-    m = SCIPModel("BPP_Gondolas_SCIP")
+    m = SCIPModel("BPP_Gondolas_Prateleiras_SCIP")
     m.hideOutput()
     m.setParam("limits/time", float(TEMPO_LIMITE))
     m.setParam("limits/gap", 0.0)
 
     y = {j: m.addVar(vtype="B", name=f"y_{j}") for j in J}
-    t = {j: m.addVar(vtype="B", name=f"t_{j}") for j in J}        # 1 = gôndola de alimentos
-    x = {(i, j): m.addVar(vtype="B", name=f"x_{i}_{j}") for i in I for j in J}
+    t = {j: m.addVar(vtype="B", name=f"t_{j}") for j in J}        # 1 = gôndola permite alimentos
+    x = {(i, j, p): m.addVar(vtype="B", name=f"x_{i}_{j}_{p}")
+         for i in I for j in J for p in P}
 
     m.setObjective(quicksum(y[j] for j in J), "minimize")
 
     for i in I:
-        m.addCons(quicksum(x[i, j] for j in J) == 1)
+        m.addCons(quicksum(x[i, j, p] for j in J for p in P) == 1)
     for j in J:
-        m.addCons(quicksum(itens[i]["largura"] * x[i, j] for i in I)
-                  <= CAPACIDADE_GONDOLA * y[j])
+        for p in P:
+            m.addCons(quicksum(itens[i]["largura"] * x[i, j, p] for i in I)
+                      <= CAPACIDADE_PRATELEIRA * y[j])
     for j in J:
         for i in A:
-            m.addCons(x[i, j] <= t[j])
+            m.addCons(quicksum(x[i, j, p] for p in P) <= t[j])
         for i in L:
-            m.addCons(x[i, j] <= 1 - t[j])
+            m.addCons(quicksum(x[i, j, p] for p in P) <= 1 - t[j])
     for j in range(M - 1):
         m.addCons(y[j] >= y[j + 1])
 
@@ -254,7 +276,7 @@ def resolver_scip(itens, M):
     if tem_sol:
         sol = m.getBestSol()
         obj = m.getSolObjVal(sol)
-        alocacao = {i: [j for j in J if m.getSolVal(sol, x[i, j]) > 0.5] for i in I}
+        alocacao = {i: [(j, p) for j in J for p in P if m.getSolVal(sol, x[i, j, p]) > 0.5] for i in I}
     if st in ("optimal", "timelimit"):
         bound = m.getDualbound()
 
@@ -265,20 +287,27 @@ def resolver_scip(itens, M):
 # 4. VALIDAÇÃO E RELATÓRIO
 # ----------------------------------------------------------------
 def validar_solucao(itens, alocacao):
-    """Confere a solução de forma independente do solver.
-    Retorna (ok, número de gôndolas usadas)."""
+    """Confere a solução de forma independente do solver (capacidade por prateleira
+    e compatibilidade sanitária por gôndola). Retorna (ok, número de gôndolas usadas)."""
     por_gondola = defaultdict(list)
+    por_prateleira = defaultdict(list)
     for i in range(len(itens)):
-        gs = alocacao.get(i, [])
-        if len(gs) != 1:
+        pos = alocacao.get(i, [])
+        if len(pos) != 1:
             return False, None
-        por_gondola[gs[0]].append(i)
-    for idxs in por_gondola.values():
-        if sum(itens[i]["largura"] for i in idxs) > CAPACIDADE_GONDOLA + 1e-6:
+        j, p = pos[0]
+        por_gondola[j].append(i)
+        por_prateleira[(j, p)].append(i)
+
+    for idxs_prat in por_prateleira.values():
+        if sum(itens[i]["largura"] for i in idxs_prat) > CAPACIDADE_PRATELEIRA + 1e-6:
             return False, len(por_gondola)
-        cats = {itens[i]["categoria"] for i in idxs}
+
+    for idxs_gond in por_gondola.values():
+        cats = {itens[i]["categoria"] for i in idxs_gond}
         if CAT_ALIMENTO in cats and CAT_LIMPEZA in cats:
             return False, len(por_gondola)
+
     return True, len(por_gondola)
 
 
@@ -292,16 +321,21 @@ def calcular_gap(obj, bound):
 
 
 def imprimir_alocacao(itens, alocacao):
-    por_gondola = defaultdict(list)
-    for i, gs in alocacao.items():
-        por_gondola[gs[0]].append(i)
+    por_gondola = defaultdict(lambda: defaultdict(list))
+    for i, pos in alocacao.items():
+        j, p = pos[0]
+        por_gondola[j][p].append(i)
     for k, j in enumerate(sorted(por_gondola), start=1):
-        idxs = por_gondola[j]
-        ocup = sum(itens[i]["largura"] for i in idxs)
-        cat = " + ".join(sorted({itens[i]["categoria"] for i in idxs}))
-        print(f"\n  Gôndola #{k} [{cat}] - Ocupação: {ocup:.1f} / {CAPACIDADE_GONDOLA} cm")
-        for i in idxs:
-            print(f"    └─ {itens[i]['nome']} (ID {itens[i]['id']}, {itens[i]['categoria']}): {itens[i]['largura']:.1f} cm")
+        todos_idxs = [i for idxs_p in por_gondola[j].values() for i in idxs_p]
+        ocup_total = sum(itens[i]["largura"] for i in todos_idxs)
+        cat = " + ".join(sorted({itens[i]["categoria"] for i in todos_idxs}))
+        print(f"\n  Gôndola #{k} [{cat}] - Ocupação Total: {ocup_total:.1f} / {CAPACIDADE_GONDOLA} cm")
+        for p in range(NUM_PRATELEIRAS):
+            idxs_p = por_gondola[j].get(p, [])
+            ocup_p = sum(itens[i]["largura"] for i in idxs_p)
+            print(f"    Prateleira {p + 1} ({ocup_p:.1f} / {CAPACIDADE_PRATELEIRA} cm):")
+            for i in idxs_p:
+                print(f"      └─ {itens[i]['nome']} (ID {itens[i]['id']}, {itens[i]['categoria']}): {itens[i]['largura']:.1f} cm")
 
 
 def montar_linha(nome_inst, n, frentes, solver, res, itens, lb, ub):
@@ -335,13 +369,14 @@ NUM_EXECUCOES = 10
 
 def executar_media(fn_solver, n_exec=NUM_EXECUCOES):
     """Roda fn_solver() n_exec vezes e retorna o resultado com tempo e nós médios.
-    Interrompe as repetições se a 1ª execução atingir o limite de tempo (timeout)."""
+    Interrompe as repetições se a 1ª execução atingir timeout ou erro de licença."""
     execucoes = []
     for _ in range(n_exec):
         r = fn_solver()
         execucoes.append(r)
-        if "timeout" in r["status"].lower():
-            print("    [Timeout atingido na 1ª rodada; pulando repetições restantes]", flush=True)
+        if r["tempo"] is None or "timeout" in r["status"].lower():
+            if "timeout" in r["status"].lower():
+                print("    [Timeout atingido na 1ª rodada; pulando repetições restantes]", flush=True)
             break
     res = dict(execucoes[-1])
     tempos = [r["tempo"] for r in execucoes if r["tempo"] is not None]
@@ -374,13 +409,13 @@ def main():
               f"({n_alim} alimentos, {n_limp} limpeza, {n_hig} higiene) | LB={lb} UB(FFD)={ub} "
               f"| {n_vars} vars, {n_cons} restrições ===", flush=True)
 
-        # Gurobi (média de NUM_EXECUCOES rodadas)
-        if n_vars > LIMITE_LICENCA_GUROBI or n_cons > LIMITE_LICENCA_GUROBI:
-            res_g = resultado("Excede licença Gurobi")
-        else:
-            print(f"  Gurobi ({NUM_EXECUCOES}x)...", flush=True)
-            res_g = executar_media(lambda: resolver_gurobi(itens, M, env))
+        # Gurobi (média de NUM_EXECUCOES rodadas; detecta automaticamente se a licença suporta)
+        print(f"  Gurobi ({NUM_EXECUCOES}x)...", flush=True)
+        res_g = executar_media(lambda: resolver_gurobi(itens, M, env))
+        if res_g["tempo"] is not None:
             print(f"    -> Média Gurobi: {res_g['tempo']:.4f} s | Nós: {res_g['nos']}", flush=True)
+        else:
+            print(f"    -> Gurobi: {res_g['status']}", flush=True)
         linhas.append(montar_linha(nome_inst, len(itens), frentes, "Gurobi", res_g, itens, lb, ub))
 
         # SCIP (média de NUM_EXECUCOES rodadas)
