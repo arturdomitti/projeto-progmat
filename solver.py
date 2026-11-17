@@ -45,7 +45,8 @@ y = {j: pulp.LpVariable(f"y_{j}", cat="Binary") for j in range(max_gondolas)}
 # x[i, j] = 1 se o item i está na gôndola j
 x = {(i, j): pulp.LpVariable(f"x_{i}_{j}", cat="Binary")
      for i in range(n_itens) for j in range(max_gondolas)}
-# t[j] = 1 se a gôndola j é de alimentos, 0 se é de limpeza
+# t[j] = 1 se a gôndola j permite Alimentos, 0 se permite Limpeza
+# (Higiene Pessoal é compatível com ambos e não sofre restrição de t[j])
 t = {j: pulp.LpVariable(f"t_{j}", cat="Binary") for j in range(max_gondolas)}
 
 # (a) Função objetivo: minimizar o número de gôndolas
@@ -60,9 +61,10 @@ for j in range(max_gondolas):
     prob += (pulp.lpSum(itens[i]['largura'] * x[i, j] for i in range(n_itens))
              <= CAPACIDADE_GONDOLA * y[j])
 
-# (d) Incompatibilidade sanitária (Alimento vs. Limpeza)
+# (d) Incompatibilidade sanitária (Alimento vs. Limpeza; Higiene Pessoal é livre)
 alimentos_idx = [i for i in range(n_itens) if itens[i]['categoria'] == 'Alimento']
 limpeza_idx = [i for i in range(n_itens) if itens[i]['categoria'] == 'Limpeza']
+higiene_idx = [i for i in range(n_itens) if itens[i]['categoria'] == 'Higiene Pessoal']
 
 for j in range(max_gondolas):
     for i in alimentos_idx:
@@ -108,9 +110,9 @@ for j in range(max_gondolas):
             continue
         gondolas_usadas += 1
         largura_ocupada = sum(item['largura'] for item in itens_na_gondola)
-        cat_gondola = itens_na_gondola[0]['categoria']
+        cat_gondola = " + ".join(sorted({item['categoria'] for item in itens_na_gondola}))
 
         print(f"\nGôndola #{gondolas_usadas} [{cat_gondola}] - "
               f"Ocupação: {largura_ocupada:.1f} / {CAPACIDADE_GONDOLA} cm")
         for item in itens_na_gondola:
-            print(f"  └─ {item['nome']} (ID {item['id']}): {item['largura']:.1f} cm")
+            print(f"  └─ {item['nome']} (ID {item['id']}, {item['categoria']}): {item['largura']:.1f} cm")

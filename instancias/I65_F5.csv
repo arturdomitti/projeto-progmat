@@ -1,0 +1,66 @@
+﻿id,nome,categoria,largura_un,largura
+1,Prepared soups salads,Alimento,11.56513523138,57.825676156899995
+2,Specialty cheeses,Alimento,15.485682394080003,77.42841197040002
+3,Energy granola bars,Alimento,15.71079876884,78.5539938442
+5,Marinades meat preparation,Alimento,13.21816,66.0908
+7,Packaged meat,Alimento,23.45011844638,117.2505922319
+8,Bakery desserts,Alimento,17.58490380904,87.9245190452
+9,Pasta sauce,Alimento,14.0131653188,70.065826594
+12,Fresh pasta,Alimento,13.662078213,68.31039106499999
+14,Tofu meat alternatives,Alimento,14.597003704080002,72.98501852040002
+18,Bulk dried fruits vegetables,Alimento,17.09121176366,85.4560588183
+20,Oral hygiene,Higiene Pessoal,8.287718644240002,41.43859322120001
+21,Packaged cheese,Alimento,13.777167347819999,68.8858367391
+22,Hair care,Higiene Pessoal,7.7195303699,38.597651849500004
+24,Fresh fruits,Alimento,15.57216899276,77.8608449638
+25,Soap,Limpeza,10.83006304392,54.150315219599996
+26,Coffee,Alimento,15.59308791206,77.9654395603
+34,Frozen meat seafood,Alimento,18.29928888776,91.4964444388
+38,Frozen meals,Alimento,14.92006808462,74.60034042310001
+42,Frozen vegan vegetarian,Alimento,13.929632143219997,69.6481607161
+45,Candy chocolate,Alimento,16.95710958838,84.7855479419
+48,Breakfast bars pastries,Alimento,13.272293750000001,66.36146875
+50,Fruit vegetable snacks,Alimento,17.59323529352,87.9661764676
+52,Frozen breakfast,Alimento,14.64564,73.2282
+54,Paper goods,Limpeza,28.9898666582,144.94933329100002
+55,Shave needs,Higiene Pessoal,12.312754099360001,61.563770496800004
+56,Diapers wipes,Higiene Pessoal,20.18841967134,100.9420983567
+57,Granola,Alimento,17.161933334180002,85.80966667090001
+58,Frozen breads doughs,Alimento,14.0008042564,70.004021282
+59,Canned meals beans,Alimento,16.44015,82.20075
+60,Trash bags liners,Limpeza,20.484253334180003,102.42126667090002
+64,Energy sports drinks,Alimento,15.893680422380001,79.4684021119
+73,Facial care,Higiene Pessoal,10.6934,53.467
+74,Dish detergents,Limpeza,17.133358334180002,85.66679167090001
+75,Laundry,Limpeza,19.30952173902,96.5476086951
+79,Frozen pizza,Alimento,15.563088,77.81544
+80,Deodorants,Higiene Pessoal,8.452104,42.26052
+81,Canned jarred vegetables,Alimento,18.19275,90.96375
+83,Fresh vegetables,Alimento,9.58353043412,47.9176521706
+87,More household,Limpeza,16.66748,83.3374
+93,Breakfast bakery,Alimento,17.93009090886,89.65045454429999
+94,Tea,Alimento,15.19936,75.99680000000001
+95,Canned meat seafood,Alimento,37.3755478294,186.877739147
+96,Lunch meat,Alimento,13.272558334180001,66.36279167090001
+98,Juice nectars,Alimento,21.449241665819997,107.24620832909999
+99,Canned fruit applesauce,Alimento,21.41772173902,107.08860869509999
+101,Air fresheners candles,Limpeza,9.78746666582,48.9373333291
+102,Baby bath body care,Higiene Pessoal,10.69892173902,53.4946086951
+104,Spices seasonings,Alimento,12.060936,60.30468
+108,Other creams cheeses,Alimento,13.29817,66.49085000000001
+109,Skin care,Higiene Pessoal,6.957567999999999,34.787839999999996
+113,Frozen juice,Alimento,12.0948173902,60.474086951
+114,Cleaning products,Limpeza,12.0026545443,60.0132727215
+116,Frozen produce,Alimento,8.4836,42.41799999999999
+117,Nuts seeds dried fruit,Alimento,15.81361666582,79.0680833291
+119,Frozen dessert,Alimento,11.30829166582,56.5414583291
+121,Cereal,Alimento,17.135856,85.67928
+122,Meat counter,Alimento,12.92191578934,64.6095789467
+123,Packaged vegetables fruits,Alimento,15.047976,75.23988
+125,Trail mix snack mix,Alimento,14.90472,74.5236
+126,Feminine care,Higiene Pessoal,12.983464,64.91732
+127,Body lotions soap,Limpeza,10.05310833418,50.26554167089999
+129,Frozen appetizers sides,Alimento,18.399125,91.995625
+130,Hot cereal pancake mixes,Alimento,17.522825,87.614125
+131,Dry pasta,Alimento,16.536416,82.68208
+132,Beauty,Higiene Pessoal,7.6352400000000005,38.1762
